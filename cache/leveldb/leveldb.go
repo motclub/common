@@ -34,9 +34,9 @@ func NewLevelDBCache(path string, o *opt.Options) (cache.ICache, error) {
 }
 
 type levelDBCacheValue struct {
-	ExpiredSeconds int64     `json:"expired_seconds"`
-	CreatedAt      time.Time `json:"created_at"`
-	Data           []byte    `json:"data"`
+	ExpiredDuration time.Duration `json:"expired_duration"`
+	CreatedAt       time.Time     `json:"created_at"`
+	Data            []byte        `json:"data"`
 }
 
 type levelDBCache struct {
@@ -71,8 +71,8 @@ func (l *levelDBCache) hasGet(path string) (*levelDBCacheValue, bool) {
 	data, err := l.db.Get([]byte(path), nil)
 	if err == nil {
 		err = json.STD().Unmarshal(data, &v)
-		if v.ExpiredSeconds > 0 {
-			expiredAt := v.CreatedAt.Add(time.Duration(v.ExpiredSeconds) * time.Second)
+		if v.ExpiredDuration > 0 {
+			expiredAt := v.CreatedAt.Add(v.ExpiredDuration)
 			if time.Now().After(expiredAt) {
 				err = l.db.Delete([]byte(path), nil)
 				return nil, false
@@ -85,14 +85,14 @@ func (l *levelDBCache) hasGet(path string) (*levelDBCacheValue, bool) {
 	return &v, err != leveldb.ErrNotFound
 }
 
-func (l *levelDBCache) TTL(path string) (int64, bool) {
+func (l *levelDBCache) TTL(path string) (time.Duration, bool) {
 	v, has := l.hasGet(path)
 	if !has {
 		return 0, has
 	}
-	expiredAt := v.CreatedAt.Add(time.Duration(v.ExpiredSeconds) * time.Second)
-	secs := time.Now().Sub(expiredAt).Seconds()
-	return int64(secs), has
+	expiredAt := v.CreatedAt.Add(v.ExpiredDuration)
+	dur := time.Now().Sub(expiredAt)
+	return dur, has
 }
 
 func (l *levelDBCache) Has(path string) bool {
@@ -109,7 +109,7 @@ func (l *levelDBCache) HasGet(path string, dst interface{}) bool {
 		_ = json.STD().Unmarshal(cv.Data, dst)
 	} else if l.parent != nil {
 		has = l.parent.HasGet(path, dst)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = l.parent.TTL(path)
 		if has {
 			_ = l.Set(path, dst, ttl)
@@ -126,7 +126,7 @@ func (l *levelDBCache) HasGetInt(path string) (int, bool) {
 	} else if l.parent != nil {
 		var v int
 		v, has = l.parent.HasGetInt(path)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = l.parent.TTL(path)
 		if has {
 			_ = l.Set(path, v, ttl)
@@ -189,7 +189,7 @@ func (l *levelDBCache) HasGetFloat(path string) (float64, bool) {
 	} else if l.parent != nil {
 		var v float64
 		v, has = l.parent.HasGetFloat(path)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = l.parent.TTL(path)
 		if has {
 			_ = l.Set(path, v, ttl)
@@ -216,7 +216,7 @@ func (l *levelDBCache) HasGetString(path string) (string, bool) {
 	} else if l.parent != nil {
 		var v string
 		v, has = l.parent.HasGetString(path)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = l.parent.TTL(path)
 		if has {
 			_ = l.Set(path, v, ttl)
@@ -234,7 +234,7 @@ func (l *levelDBCache) HasGetBool(path string) (bool, bool) {
 	} else if l.parent != nil {
 		var v bool
 		v, has = l.parent.HasGetBool(path)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = l.parent.TTL(path)
 		if has {
 			_ = l.Set(path, v, ttl)
@@ -253,7 +253,7 @@ func (l *levelDBCache) HasGetTime(path string) (time.Time, bool) {
 	} else if l.parent != nil {
 		var v time.Time
 		v, has = l.parent.HasGetTime(path)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = l.parent.TTL(path)
 		if has {
 			_ = l.Set(path, v, ttl)
@@ -465,21 +465,21 @@ func (l *levelDBCache) DefaultGetTime(path string, defaultValue time.Time) time.
 	return defaultValue
 }
 
-func (l *levelDBCache) Set(key string, value interface{}, expiresIn ...int64) error {
+func (l *levelDBCache) Set(key string, value interface{}, expiration ...time.Duration) error {
 	s := json.Stringify(std.D{"data": value}, false)
 	raw, _, _, err := jsonparser.Get([]byte(s), "data")
 	if err != nil {
 		return err
 	}
 
-	var exp int64
-	if len(expiresIn) > 0 {
-		exp = expiresIn[0]
+	var exp time.Duration
+	if len(expiration) > 0 {
+		exp = expiration[0]
 	}
 	cv := &levelDBCacheValue{
-		ExpiredSeconds: exp,
-		CreatedAt:      time.Now(),
-		Data:           raw,
+		ExpiredDuration: exp,
+		CreatedAt:       time.Now(),
+		Data:            raw,
 	}
 	data, err := json.STD().Marshal(cv)
 	if err != nil {
@@ -487,7 +487,7 @@ func (l *levelDBCache) Set(key string, value interface{}, expiresIn ...int64) er
 	}
 	err = l.db.Put([]byte(key), data, nil)
 	if err == nil && l.parent != nil {
-		err = l.parent.Set(key, value, expiresIn...)
+		err = l.parent.Set(key, value, expiration...)
 	}
 	return err
 }

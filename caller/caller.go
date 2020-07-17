@@ -24,16 +24,14 @@ func RegisterCaller(c ICaller) {
 }
 
 type ICaller interface {
-	New(settings interface{}) (ICaller, error)
+	New(settings std.D) (ICaller, error)
 	Kind() string
 	Call(entry *ServiceEntry, args *std.Args) *std.Reply
 	Close() error
 }
 
 type ServiceEntry struct {
-	Name     string
 	Kind     string
-	Retry    bool
 	Settings std.D
 }
 

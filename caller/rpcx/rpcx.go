@@ -10,21 +10,24 @@ import (
 	"sync"
 )
 
+func init() {
+	caller.RegisterCaller(&xCaller{})
+}
+
 var (
 	clients   = make(map[string]client.XClient)
 	clientsMu sync.RWMutex
 )
 
 type xCaller struct {
-	Network       string `json:"network"`
-	Address       string `json:"address"`
+	Server        string `json:"server"`
 	ServicePath   string `json:"service_path"`
 	ServiceMethod string `json:"service_method"`
 	MaxRetries    int
 }
 
 func (c *xCaller) client() client.XClient {
-	server := fmt.Sprintf("%s@%s", c.Network, c.Address)
+	server := c.Server
 
 	clientsMu.RLock()
 	xc := clients[server]
@@ -42,7 +45,7 @@ func (c *xCaller) client() client.XClient {
 	return xc
 }
 
-func (c *xCaller) New(settings interface{}) (caller.ICaller, error) {
+func (c *xCaller) New(settings std.D) (caller.ICaller, error) {
 	var cc xCaller
 	err := json.Copy(settings, &cc)
 	return &cc, err

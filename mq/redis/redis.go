@@ -10,11 +10,7 @@ import (
 
 const magicString = "0BE6C14B9954431FC3AEE05C4D4CF154"
 
-func NewRedisMQByClient(rdb redis.UniversalClient) mq.IMessageQueue {
-	return &redisMQ{rdb: rdb}
-}
-
-func NewRedisMQByOptions(opts *redis.UniversalOptions) (mq.IMessageQueue, error) {
+func NewRedisMQ(opts *redis.UniversalOptions) (mq.IMessageQueue, error) {
 	rdb := redis.NewUniversalClient(opts)
 	if _, err := rdb.Ping(context.Background()).Result(); err != nil {
 		return nil, err

@@ -81,15 +81,9 @@ func (r *redisCache) PSubscribe(patterns []string, handler func(string, string))
 	return nil
 }
 
-func (r *redisCache) TTL(path string) (int64, bool) {
+func (r *redisCache) TTL(path string) (time.Duration, bool) {
 	dur, err := r.rdb.TTL(context.Background(), path).Result()
-	var v int64
-	if err == nil {
-		if s := int64(dur.Seconds()); s > 0 {
-			v = s
-		}
-	}
-	return v, err == nil && v > 0
+	return dur, err == nil
 }
 
 func (r *redisCache) Has(key string) bool {
@@ -105,16 +99,16 @@ func (r *redisCache) HasGet(key string, dst interface{}) bool {
 	has := err == nil
 	if has && s != "" {
 		var v struct {
-			ExpiredSeconds int64       `json:"expired_seconds"`
-			CreatedAt      time.Time   `json:"created_at"`
-			Data           interface{} `json:"data"`
+			ExpiredDuration int64       `json:"expired_duration"`
+			CreatedAt       time.Time   `json:"created_at"`
+			Data            interface{} `json:"data"`
 		}
 		if err = json.Parse(s, &v); err == nil {
 			err = json.Copy(v.Data, dst)
 		}
 	} else if r.parent != nil {
 		has = r.parent.HasGet(key, dst)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = r.parent.TTL(key)
 		if has {
 			_ = r.Set(key, dst, ttl)
@@ -129,7 +123,7 @@ func (r *redisCache) HasGetInt(key string) (int, bool) {
 	if !has && r.parent != nil {
 		var v int
 		v, has = r.parent.HasGetInt(key)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = r.parent.TTL(key)
 		if has {
 			_ = r.Set(key, v, ttl)
@@ -137,9 +131,9 @@ func (r *redisCache) HasGetInt(key string) (int, bool) {
 		return v, has
 	}
 	var v struct {
-		ExpiredSeconds int64     `json:"expired_seconds"`
-		CreatedAt      time.Time `json:"created_at"`
-		Data           int       `json:"data"`
+		ExpiredDuration int64     `json:"expired_duration"`
+		CreatedAt       time.Time `json:"created_at"`
+		Data            int       `json:"data"`
 	}
 	err = json.Parse(s, &v)
 	return v.Data, has
@@ -196,7 +190,7 @@ func (r *redisCache) HasGetFloat(key string) (float64, bool) {
 	if !has && r.parent != nil {
 		var v float64
 		v, has = r.parent.HasGetFloat(key)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = r.parent.TTL(key)
 		if has {
 			_ = r.Set(key, v, ttl)
@@ -204,9 +198,9 @@ func (r *redisCache) HasGetFloat(key string) (float64, bool) {
 		return v, has
 	}
 	var v struct {
-		ExpiredSeconds int64     `json:"expired_seconds"`
-		CreatedAt      time.Time `json:"created_at"`
-		Data           float64   `json:"data"`
+		ExpiredDuration int64     `json:"expired_duration"`
+		CreatedAt       time.Time `json:"created_at"`
+		Data            float64   `json:"data"`
 	}
 	err = json.Parse(s, &v)
 	return v.Data, has
@@ -227,7 +221,7 @@ func (r *redisCache) HasGetString(key string) (string, bool) {
 	if !has && r.parent != nil {
 		var v string
 		v, has = r.parent.HasGetString(key)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = r.parent.TTL(key)
 		if has {
 			_ = r.Set(key, v, ttl)
@@ -235,9 +229,9 @@ func (r *redisCache) HasGetString(key string) (string, bool) {
 		return v, has
 	}
 	var v struct {
-		ExpiredSeconds int64     `json:"expired_seconds"`
-		CreatedAt      time.Time `json:"created_at"`
-		Data           string    `json:"data"`
+		ExpiredDuration int64     `json:"expired_duration"`
+		CreatedAt       time.Time `json:"created_at"`
+		Data            string    `json:"data"`
 	}
 	err = json.Parse(s, &v)
 	return v.Data, has
@@ -249,7 +243,7 @@ func (r *redisCache) HasGetBool(key string) (bool, bool) {
 	if !has && r.parent != nil {
 		var v bool
 		v, has = r.parent.HasGetBool(key)
-		var ttl int64
+		var ttl time.Duration
 		ttl, has = r.parent.TTL(key)
 		if has {
 			_ = r.Set(key, v, ttl)
@@ -257,9 +251,9 @@ func (r *redisCache) HasGetBool(key string) (bool, bool) {
 		return v, has
 	}
 	var v struct {
-		ExpiredSeconds int64     `json:"expired_seconds"`
-		CreatedAt      time.Time `json:"created_at"`
-		Data           bool      `json:"data"`
+		ExpiredDuration int64     `json:"expired_duration"`
+		CreatedAt       time.Time `json:"created_at"`
+		Data            bool      `json:"data"`
 	}
 	err = json.Parse(s, &v)
 	return v.Data, has
@@ -511,25 +505,24 @@ func (r *redisCache) Contains(s string, limit ...int) (map[string]string, error)
 	return v, err
 }
 
-func (r *redisCache) Set(key string, value interface{}, expiresIn ...int64) error {
-	var exp int64
-	if len(expiresIn) > 0 {
-		exp = expiresIn[0]
+func (r *redisCache) Set(key string, value interface{}, expiration ...time.Duration) error {
+	var dur time.Duration
+	if len(expiration) > 0 {
+		dur = expiration[0]
 	}
-	dur := time.Duration(exp) * time.Second
 	cv := struct {
-		ExpiredSeconds int64       `json:"expired_seconds"`
-		CreatedAt      time.Time   `json:"created_at"`
-		Data           interface{} `json:"data"`
+		ExpiredDuration time.Duration `json:"expired_duration"`
+		CreatedAt       time.Time     `json:"created_at"`
+		Data            interface{}   `json:"data"`
 	}{
-		ExpiredSeconds: exp,
-		CreatedAt:      time.Now(),
-		Data:           value,
+		ExpiredDuration: dur,
+		CreatedAt:       time.Now(),
+		Data:            value,
 	}
 	v := json.Stringify(&cv, false)
 	err := r.rdb.Set(context.Background(), key, v, dur).Err()
 	if err == nil && r.parent != nil {
-		err = r.parent.Set(key, value, expiresIn...)
+		err = r.parent.Set(key, value, expiration...)
 	}
 	return err
 }
@@ -604,9 +597,9 @@ func (r *redisCache) contains(pattern string, limit ...int) (map[string]string, 
 				return nil, err
 			}
 			var v struct {
-				ExpiredSeconds int64     `json:"expired_seconds"`
-				CreatedAt      time.Time `json:"created_at"`
-				Data           string    `json:"data"`
+				ExpiredDuration int64     `json:"expired_duration"`
+				CreatedAt       time.Time `json:"created_at"`
+				Data            string    `json:"data"`
 			}
 			if err = json.Parse(s, &v); err == nil {
 				values[key] = v.Data

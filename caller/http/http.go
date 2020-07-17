@@ -23,7 +23,7 @@ type httpCaller struct {
 	MaxRetries  uint              `json:"max_retries"`
 }
 
-func (c *httpCaller) New(settings interface{}) (caller.ICaller, error) {
+func (c *httpCaller) New(settings std.D) (caller.ICaller, error) {
 	var cc httpCaller
 	err := json.Copy(settings, &cc)
 	return &cc, err
