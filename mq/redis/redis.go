@@ -2,7 +2,6 @@ package redis
 
 import (
 	"context"
-	"fmt"
 	"github.com/go-redis/redis/v8"
 	"github.com/motclub/common/mq"
 	"time"
@@ -29,10 +28,6 @@ func (r *redisMQ) XAddMessage(topic string, values map[string]interface{}) error
 		Values: values,
 	})
 	return res.Err()
-}
-
-func (r *redisMQ) XAddExclusiveMessage(topic string, values map[string]interface{}) error {
-	return r.XAddMessage(fmt.Sprintf("%s_%s", topic, magicString), values)
 }
 
 func (r *redisMQ) XRegisterConsumer(topics []string, handler func(error, string, *mq.XMessage) error) {
@@ -62,13 +57,6 @@ func (r *redisMQ) XRegisterConsumer(topics []string, handler func(error, string,
 			}
 		}
 	}()
-}
-
-func (r *redisMQ) XRegisterExclusiveConsumer(topics []string, consumer string, handler func(error, string, *mq.XMessage) error) {
-	if consumer == "" {
-		consumer = magicString
-	}
-	r.XRegisterConsumerGroup(topics, magicString, consumer, handler)
 }
 
 func (r *redisMQ) XRegisterConsumerGroup(topics []string, group, consumer string, handler func(error, string, *mq.XMessage) error) {
@@ -177,4 +165,27 @@ func (r *redisMQ) XClaim(topic, group, consumer string, minIdle time.Duration, m
 		Messages: messages,
 	})
 	return res.Err()
+}
+
+func (r *redisMQ) XExclusiveRegisterConsumer(topics []string, consumer string, handler func(error, string, *mq.XMessage) error) {
+	r.XRegisterConsumerGroup(topics, magicString, consumer, handler)
+}
+
+func (r *redisMQ) XExclusiveAck(topic string, ids ...string) error {
+	return r.XAck(topic, magicString, ids...)
+}
+
+func (r *redisMQ) XExclusivePending(topic string, args *mq.XPendingArgs) ([]mq.XPendingReplyEntry, error) {
+	return r.XPending(topic, magicString, args)
+}
+
+func (r *redisMQ) XExclusiveClaim(topic, consumer string, minIdle time.Duration, messages ...string) error {
+	return r.XClaim(topic, magicString, consumer, minIdle, messages...)
+}
+
+func (r *redisMQ) XClose() error {
+	if r.rdb != nil {
+		return r.rdb.Close()
+	}
+	return nil
 }
