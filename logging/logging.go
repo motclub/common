@@ -27,7 +27,7 @@ func parseArgs(v []interface{}) (fields logrus.Fields, format string, args []int
 		if len(v) > 1 {
 			args = v[1:]
 		}
-	} else if len(v) > 1 {
+	} else {
 		indirectValue := reflect.Indirect(reflect.ValueOf(v[0]))
 		switch indirectValue.Kind() {
 		case reflect.Map, reflect.Struct:
@@ -36,10 +36,12 @@ func parseArgs(v []interface{}) (fields logrus.Fields, format string, args []int
 			fields = make(logrus.Fields)
 			fields["data"] = fmt.Sprintf("%v", v[0])
 		}
-		if vv, ok := v[1].(string); ok {
-			format = vv
-			if len(v) > 2 {
-				args = v[2:]
+		if len(v) > 1 {
+			if vv, ok := v[1].(string); ok {
+				format = vv
+				if len(v) > 2 {
+					args = v[2:]
+				}
 			}
 		}
 	}
