@@ -18,7 +18,21 @@ func init() {
 	}
 }
 
-func parseArgs(v []interface{}) (fields logrus.Fields, format string, args []interface{}, err error) {
+var DefaultLogger = &logger{}
+
+type ILogger interface {
+	PRINT(v ...interface{})
+	DEBUG(v ...interface{})
+	WARN(v ...interface{})
+	INFO(v ...interface{})
+	ERROR(v ...interface{})
+	FATAL(v ...interface{})
+	PANIC(v ...interface{})
+}
+
+type logger struct{}
+
+func (d *logger) parseArgs(v []interface{}) (fields logrus.Fields, format string, args []interface{}, err error) {
 	if len(v) == 0 || (len(v) == 1 && reflectx.IsNil(v[0])) {
 		return
 	}
@@ -51,58 +65,86 @@ func parseArgs(v []interface{}) (fields logrus.Fields, format string, args []int
 	return
 }
 
-func PRINT(v ...interface{}) {
-	fields, format, args, err := parseArgs(v)
+func (d *logger) PRINT(v ...interface{}) {
+	fields, format, args, err := d.parseArgs(v)
 	if err != nil {
 		return
 	}
 	logrus.WithFields(fields).Printf(format, args...)
 }
 
-func DEBUG(v ...interface{}) {
-	fields, format, args, err := parseArgs(v)
+func (d *logger) DEBUG(v ...interface{}) {
+	fields, format, args, err := d.parseArgs(v)
 	if err != nil {
 		return
 	}
 	logrus.WithFields(fields).Debugf(format, args...)
 }
 
-func WARN(v ...interface{}) {
-	fields, format, args, err := parseArgs(v)
+func (d *logger) WARN(v ...interface{}) {
+	fields, format, args, err := d.parseArgs(v)
 	if err != nil {
 		return
 	}
 	logrus.WithFields(fields).Warnf(format, args...)
 }
 
-func INFO(v ...interface{}) {
-	fields, format, args, err := parseArgs(v)
+func (d *logger) INFO(v ...interface{}) {
+	fields, format, args, err := d.parseArgs(v)
 	if err != nil {
 		return
 	}
 	logrus.WithFields(fields).Infof(format, args...)
 }
 
-func ERROR(v ...interface{}) {
-	fields, format, args, err := parseArgs(v)
+func (d *logger) ERROR(v ...interface{}) {
+	fields, format, args, err := d.parseArgs(v)
 	if err != nil {
 		return
 	}
 	logrus.WithFields(fields).Errorf(format, args...)
 }
 
-func FATAL(v ...interface{}) {
-	fields, format, args, err := parseArgs(v)
+func (d *logger) FATAL(v ...interface{}) {
+	fields, format, args, err := d.parseArgs(v)
 	if err != nil {
 		return
 	}
 	logrus.WithFields(fields).Fatalf(format, args...)
 }
 
-func PANIC(v ...interface{}) {
-	fields, format, args, err := parseArgs(v)
+func (d *logger) PANIC(v ...interface{}) {
+	fields, format, args, err := d.parseArgs(v)
 	if err != nil {
 		return
 	}
 	logrus.WithFields(fields).Panicf(format, args...)
+}
+
+func PRINT(v ...interface{}) {
+	DefaultLogger.PRINT(v...)
+}
+
+func DEBUG(v ...interface{}) {
+	DefaultLogger.DEBUG(v...)
+}
+
+func WARN(v ...interface{}) {
+	DefaultLogger.WARN(v...)
+}
+
+func INFO(v ...interface{}) {
+	DefaultLogger.INFO(v...)
+}
+
+func ERROR(v ...interface{}) {
+	DefaultLogger.ERROR(v...)
+}
+
+func FATAL(v ...interface{}) {
+	DefaultLogger.FATAL(v...)
+}
+
+func PANIC(v ...interface{}) {
+	DefaultLogger.PANIC(v...)
 }

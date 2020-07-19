@@ -20,4 +20,5 @@ require (
 	github.com/syndtr/goleveldb v1.0.0
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899
 	google.golang.org/grpc/examples v0.0.0-20200715200837-9fcde86ebe77 // indirect
+	gopkg.in/guregu/null.v4 v4.0.0
 )

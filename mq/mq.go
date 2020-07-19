@@ -1,40 +1,48 @@
 package mq
 
-import "time"
+import (
+	"github.com/motclub/common/logging"
+	"time"
+)
 
 type XMessage struct {
 	ID     string
 	Values map[string]interface{}
 }
 
-type XPendingArgs struct {
-	Start    string
-	End      string
-	Count    int64
-	Consumer string
-}
-
-type XPendingReplyEntry struct {
+type XGroupPendingItem struct {
 	ID         string
 	Consumer   string
 	Idle       time.Duration
 	RetryCount int64
 }
 
-type IMessageQueue interface {
-	XAddMessage(topic string, values map[string]interface{}) error
-	XRegisterConsumer(topics []string, handler func(error, string, *XMessage) error)
-	XRegisterConsumerGroup(topics []string, group, consumer string, handler func(error, string, *XMessage) error)
-	XAck(topic, group string, ids ...string) error
+type XGroupPendingResult []XGroupPendingItem
+
+type XInfoGroupsItem struct {
+	Name            string
+	Consumers       int64
+	Pending         int64
+	LastDeliveredID string
+}
+
+type XInfoGroupsResult []XInfoGroupsItem
+
+type IMessage interface {
+	Logger() logging.ILogger
+	XAdd(topic string, values map[string]interface{}) error
+	XRead(topics []string, callback func(string, *XMessage) error) error
+
+	XGroupRead(topics []string, group, consumer string, callback func(string, *XMessage) error) error
+	XGroupCreate(topic, group, start string) error
+	XGroupDelConsumer(stream, group, consumer string) error
+	XGroupDestroy(stream, group string) error
+	XGroupAck(topic, group string, ids ...string) error
+	XGroupPending(topic, group string, start string, end string, count int64, consumer string) (XGroupPendingResult, error)
+	XGroupClaim(topic, group, consumer string, minIdle time.Duration, ids ...string) error
+
+	XInfoGroups(topic string) (XInfoGroupsResult, error)
 	XDel(topic string, ids ...string) error
 	XRange(topic, start, end string, count int64) ([]XMessage, error)
-	XPending(topic, group string, args *XPendingArgs) ([]XPendingReplyEntry, error)
-	XClaim(topic, group, consumer string, minIdle time.Duration, messages ...string) error
-
-	XExclusiveRegisterConsumer(topics []string, consumer string, handler func(error, string, *XMessage) error)
-	XExclusiveAck(topic string, ids ...string) error
-	XExclusivePending(topic string, args *XPendingArgs) ([]XPendingReplyEntry, error)
-	XExclusiveClaim(topic, consumer string, minIdle time.Duration, messages ...string) error
-
 	XClose() error
 }
