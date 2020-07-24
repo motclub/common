@@ -2,66 +2,49 @@ package caller
 
 import (
 	"fmt"
+	"github.com/motclub/common/cache"
 	"github.com/motclub/common/std"
-	"strings"
-	"sync"
 )
 
-var (
-	callers   = make(map[string]ICaller)
-	callersMu sync.RWMutex
-)
+const key = "mot_services"
 
-func RegisterCaller(c ICaller) {
-	if c == nil || c.Kind() == "" {
-		return
-	}
-
-	callersMu.Lock()
-	defer callersMu.Unlock()
-
-	callers[c.Kind()] = c
+func New(cache cache.ICache) *Caller {
+	return &Caller{cache: cache}
 }
 
-type ICaller interface {
-	New(settings std.D) (ICaller, error)
-	Kind() string
-	Call(entry *ServiceEntry, args *std.Args) *std.Reply
-	Close() error
+type Service struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	Spec std.D  `json:"spec"`
 }
 
-type ServiceEntry struct {
-	Kind     string
-	Settings std.D
+type Caller struct {
+	cache cache.ICache
 }
 
-func Call(entry *ServiceEntry, args *std.Args) *std.Reply {
-	if entry == nil || args == nil {
-		return nil
-	}
-	kind := strings.ToUpper(entry.Kind)
-
-	callersMu.RLock()
-	caller := callers[kind]
-	callersMu.RUnlock()
-	if caller == nil {
-		return &std.Reply{
-			Code:              -1,
-			Data:              fmt.Errorf("unsupported caller type: %s", kind),
-			Message:           "Service call failed.",
-			LocaleMessageName: "mot_service_call_failed",
-		}
-	}
-
-	c, err := caller.New(entry.Settings)
-	if err != nil {
+func (c *Caller) CallService(name string, args *std.Args) *std.Reply {
+	service := c.GetService(name)
+	if service == nil {
 		return &std.Reply{
 			Code:              -1,
 			Data:              fmt.Errorf("failed to create caller: %s", err.Error()),
 			Message:           "Service call failed.",
-			LocaleMessageName: "mot_service_call_failed",
+			LocaleMessageName: "mot.service.call.failed",
 		}
 	}
+	return nil
+}
 
-	return c.Call(entry, args)
+func (c *Caller) GetService(name string) *Service {
+	services := c.GetServices()
+	if v, has := services[name]; has {
+		return &v
+	}
+	return nil
+}
+
+func (c *Caller) GetServices() map[string]Service {
+	services := make(map[string]Service)
+	c.cache.Get(key, &services)
+	return services
 }

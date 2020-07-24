@@ -3,6 +3,7 @@ package std
 import (
 	"errors"
 	"fmt"
+	"github.com/motclub/common/intl"
 	"github.com/motclub/common/json"
 	"github.com/motclub/common/reflectx"
 	"net/http"
@@ -21,16 +22,13 @@ type Args struct {
 }
 
 type Reply struct {
-	Code                int                    `json:"code"`
-	Data                interface{}            `json:"data"`
-	Message             string                 `json:"msg,omitempty"`
-	LocaleMessageName   string                 `json:"locale_message_name"`
-	LocaleMessageValues map[string]interface{} `json:"locale_message_values"`
-
-	HTTPStatusCode int                                    `json:"-"`
-	HTTPAction     func(statusCode int, data interface{}) `json:"-"`
-	HTTPCookies    []*http.Cookie                         `json:"-"`
-	HTTPHeaders    map[string]string                      `json:"-"`
+	Code           int                     `json:"code"`
+	Data           interface{}             `json:"data"`
+	Message        string                  `json:"msg,omitempty"`
+	LocaleMessage  *intl.MessageDescriptor `json:"locale_message"`
+	HTTPStatusCode int                     `json:"http_status_code"`
+	HTTPAction     string                  `json:"http_action"`
+	HTTPCookies    []*http.Cookie          `json:"http_cookies"`
 }
 
 func (s *Reply) MarshalJSON() ([]byte, error) {
@@ -250,4 +248,47 @@ func (s *Reply) BindTime() (time.Time, error) {
 	default:
 		return time.Time{}, ErrUnsupportedDataType
 	}
+}
+func STD(data interface{}, args ...interface{}) *STDReply {
+	std := std(data, args)
+	return std
+}
+
+func std(data interface{}, args []interface{}) *Reply {
+	reply := Reply{
+		Data: data,
+		Code: 0,
+	}
+	if localeMessage != nil {
+		reply.Message = localeMessage.Render(c.AppCache())
+	}
+	return &reply
+}
+
+func stdErr(data interface{}, code int, args []interface{}) *Reply {
+	messageName, defaultMessage, messageValues := resolveLocaleMessage(args)
+	if code == 0 {
+		code = -1
+	}
+	body := Reply{
+		Data: data,
+		Code: code,
+	}
+	if localeMessage != nil {
+		body.Message = localeMessage.Render(c.AppCache())
+	}
+	return &body
+}
+
+func resolveLocaleMessage(args []interface{}) (messageID, defaultMessage string, contextValues interface{}) {
+	if len(args) > 0 {
+		messageID = args[0].(string)
+	}
+	if len(args) > 1 {
+		defaultMessage = args[1].(string)
+	}
+	if len(args) > 2 {
+		contextValues = args[2]
+	}
+	return
 }

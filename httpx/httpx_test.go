@@ -1,119 +1,171 @@
 package httpx
 
 import (
+	"fmt"
 	"github.com/motclub/common/json"
+	"github.com/motclub/common/parser"
+	"github.com/motclub/common/std"
 	"github.com/stretchr/testify/assert"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
+func writeData(data std.D) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		defer func() { _ = r.Body.Close() }()
+		buf, _ := ioutil.ReadAll(r.Body)
+		body := make(std.D)
+		_ = json.STD().Unmarshal(buf, &body)
+		for k, v := range data {
+			body[k] = v
+		}
+		_, _ = io.WriteString(w, json.Stringify(map[string]interface{}{
+			"header": r.Header,
+			"method": r.Method,
+			"query":  r.URL.Query(),
+			"body":   body,
+			"form":   r.Form,
+		}, false))
+	})
+}
+
+type reply struct {
+	Header http.Header `json:"header"`
+	Method string      `json:"method"`
+	Query  url.Values  `json:"query"`
+	Body   std.D       `json:"body"`
+	Form   url.Values  `json:"form"`
+}
+
 func TestGET(t *testing.T) {
-	var reply struct {
-		Identity struct {
-			ID    string `json:"id"`
-			Login string `json:"login"`
-		} `json:"identity"`
-		Permissions struct {
-			Roles []string `json:"roles"`
-		} `json:"permissions"`
-	}
-	if err := GET("https://run.mocky.io/v3/c6652490-278f-458a-8499-82694398e3f0", &reply); err != nil {
+	ts := httptest.NewServer(writeData(std.D{
+		"login": "John Doe",
+		"roles": []string{"moderator"},
+		"id":    "b06cd03f-75d0-413a-b94b-35e155444d70",
+	}))
+	var dst reply
+	if err := GET(fmt.Sprintf("%s?a=1&b=2", ts.URL), &dst); err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, "b06cd03f-75d0-413a-b94b-35e155444d70", reply.Identity.ID)
-	assert.Equal(t, "John Doe", reply.Identity.Login)
-	assert.Equal(t, "moderator", reply.Permissions.Roles[0])
+	body, _ := parser.NewParser(dst.Body)
+	assert.Equal(t, http.MethodGet, dst.Method)
+	assert.Equal(t, "application/json", dst.Header.Get("Content-Type"))
+	assert.Equal(t, "1", dst.Query.Get("a"))
+	assert.Equal(t, "2", dst.Query.Get("b"))
+	assert.Equal(t, "b06cd03f-75d0-413a-b94b-35e155444d70", body.GetString("id"))
+	assert.Equal(t, "John Doe", body.GetString("login"))
+	assert.Equal(t, "moderator", body.GetString("roles[0]"))
 }
 
 func TestPOST(t *testing.T) {
-	var args = struct {
-		Code string `json:"code"`
-		Name string `json:"name"`
-	}{
-		Code: "he",
-		Name: "llo",
-	}
-	var reply struct {
-		Name     string `json:"name"`
-		Status   string `json:"status"`
-		Url      string `json:"url"`
-		ThumbUrl string `json:"thumbUrl"`
-	}
-	if err := POST("https://run.mocky.io/v3/fd257431-155a-4a8e-9d49-4ca233067206", &args, &reply); err != nil {
+	ts := httptest.NewServer(writeData(std.D{
+		"login": "John Doe",
+		"roles": []string{"moderator"},
+		"id":    "b06cd03f-75d0-413a-b94b-35e155444d70",
+	}))
+	var dst reply
+	if err := POST(fmt.Sprintf("%s?a=1&b=2", ts.URL), std.D{"username": "chan", "gender": "female", "age": 30}, &dst); err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, "xxx.png", reply.Name)
-	assert.Equal(t, "done", reply.Status)
-	assert.Equal(t, "https://example.com/a/jkjgkEfvpUPVyRjUImniVslZfWPnJuuZ.png", reply.Url)
-	assert.Equal(t, "https://example.com/a/jkjgkEfvpUPVyRjUImniVslZfWPnJuuZ.png", reply.ThumbUrl)
+	body, _ := parser.NewParser(dst.Body)
+	assert.Equal(t, http.MethodPost, dst.Method)
+	assert.Equal(t, "application/json", dst.Header.Get("Content-Type"))
+	assert.Equal(t, "1", dst.Query.Get("a"))
+	assert.Equal(t, "2", dst.Query.Get("b"))
+	assert.Equal(t, "b06cd03f-75d0-413a-b94b-35e155444d70", body.GetString("id"))
+	assert.Equal(t, "John Doe", body.GetString("login"))
+	assert.Equal(t, "moderator", body.GetString("roles[0]"))
+	assert.Equal(t, "chan", body.GetString("username"))
+	assert.Equal(t, 30, body.GetInt("age"))
+}
 
-	var reply2 interface{}
-	if err := POST("https://run.mocky.io/v3/52d0c8c5-7121-4f42-afb6-2244402229fb", nil, &reply2); err != nil {
+func TestPOSTForm(t *testing.T) {
+	ts := httptest.NewServer(writeData(std.D{
+		"login": "John Doe",
+		"roles": []string{"moderator"},
+		"id":    "b06cd03f-75d0-413a-b94b-35e155444d70",
+	}))
+	var dst reply
+	if err := POSTForm(fmt.Sprintf("%s?a=1&b=2", ts.URL), std.D{"username": "chan", "gender": "female", "age": 30}, &dst); err != nil {
 		t.Fatal(err)
 	}
-	var results2 []map[string]interface{}
-	if data, err := json.STD().Marshal(reply2); err != nil {
-		t.Fatal(err)
-	} else {
-		if err := json.STD().Unmarshal(data, &results2); err != nil {
-			t.Fatal(err)
-		}
-	}
-	assert.Equal(t, 2, len(results2))
-	assert.Equal(t, "aaa.png", results2[0]["name"].(string))
-	assert.Equal(t, "https://example.com/a/bbb.png", results2[1]["thumbUrl"].(string))
+	body, _ := parser.NewParser(dst.Body)
+	assert.Equal(t, http.MethodPost, dst.Method)
+	assert.Equal(t, "application/x-www-form-urlencoded", dst.Header.Get("Content-Type"))
+	assert.Equal(t, "1", dst.Query.Get("a"))
+	assert.Equal(t, "2", dst.Query.Get("b"))
+	assert.Equal(t, "b06cd03f-75d0-413a-b94b-35e155444d70", body.GetString("id"))
+	assert.Equal(t, "John Doe", body.GetString("login"))
+	assert.Equal(t, "moderator", body.GetString("roles[0]"))
+	assert.Equal(t, "chan", body.GetString("username"))
+	assert.Equal(t, 30, body.GetInt("age"))
 }
 
 func TestPUT(t *testing.T) {
-	var reply struct {
-		Name     string `json:"name"`
-		Status   string `json:"status"`
-		Url      string `json:"url"`
-		ThumbUrl string `json:"thumbUrl"`
-	}
-	if err := PUT("https://run.mocky.io/v3/fd257431-155a-4a8e-9d49-4ca233067206", nil, &reply); err != nil {
+	ts := httptest.NewServer(writeData(std.D{
+		"login": "John Doe",
+		"roles": []string{"moderator"},
+		"id":    "b06cd03f-75d0-413a-b94b-35e155444d70",
+	}))
+	var dst reply
+	if err := PUT(fmt.Sprintf("%s?a=1&b=2", ts.URL), std.D{"username": "chan", "gender": "female", "age": 30}, &dst); err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, "xxx.png", reply.Name)
-	assert.Equal(t, "done", reply.Status)
-	assert.Equal(t, "https://example.com/a/jkjgkEfvpUPVyRjUImniVslZfWPnJuuZ.png", reply.Url)
-	assert.Equal(t, "https://example.com/a/jkjgkEfvpUPVyRjUImniVslZfWPnJuuZ.png", reply.ThumbUrl)
+	body, _ := parser.NewParser(dst.Body)
+	assert.Equal(t, http.MethodPut, dst.Method)
+	assert.Equal(t, "application/json", dst.Header.Get("Content-Type"))
+	assert.Equal(t, "1", dst.Query.Get("a"))
+	assert.Equal(t, "2", dst.Query.Get("b"))
+	assert.Equal(t, "b06cd03f-75d0-413a-b94b-35e155444d70", body.GetString("id"))
+	assert.Equal(t, "John Doe", body.GetString("login"))
+	assert.Equal(t, "moderator", body.GetString("roles[0]"))
+	assert.Equal(t, "chan", body.GetString("username"))
+	assert.Equal(t, 30, body.GetInt("age"))
 }
 
 func TestPATCH(t *testing.T) {
-	var args = struct {
-		Code string `json:"code"`
-		Name string `json:"name"`
-	}{
-		Code: "he",
-		Name: "llo",
-	}
-	var reply struct {
-		Name     string `json:"name"`
-		Status   string `json:"status"`
-		Url      string `json:"url"`
-		ThumbUrl string `json:"thumbUrl"`
-	}
-	if err := PATCH("https://run.mocky.io/v3/fd257431-155a-4a8e-9d49-4ca233067206", &args, &reply); err != nil {
+	ts := httptest.NewServer(writeData(std.D{
+		"login": "John Doe",
+		"roles": []string{"moderator"},
+		"id":    "b06cd03f-75d0-413a-b94b-35e155444d70",
+	}))
+	var dst reply
+	if err := PATCH(fmt.Sprintf("%s?a=1&b=2", ts.URL), std.D{"username": "chan", "gender": "female", "age": 30}, &dst); err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, "xxx.png", reply.Name)
-	assert.Equal(t, "done", reply.Status)
-	assert.Equal(t, "https://example.com/a/jkjgkEfvpUPVyRjUImniVslZfWPnJuuZ.png", reply.Url)
-	assert.Equal(t, "https://example.com/a/jkjgkEfvpUPVyRjUImniVslZfWPnJuuZ.png", reply.ThumbUrl)
+	body, _ := parser.NewParser(dst.Body)
+	assert.Equal(t, http.MethodPatch, dst.Method)
+	assert.Equal(t, "application/json", dst.Header.Get("Content-Type"))
+	assert.Equal(t, "1", dst.Query.Get("a"))
+	assert.Equal(t, "2", dst.Query.Get("b"))
+	assert.Equal(t, "b06cd03f-75d0-413a-b94b-35e155444d70", body.GetString("id"))
+	assert.Equal(t, "John Doe", body.GetString("login"))
+	assert.Equal(t, "moderator", body.GetString("roles[0]"))
+	assert.Equal(t, "chan", body.GetString("username"))
+	assert.Equal(t, 30, body.GetInt("age"))
 }
 
 func TestDELETE(t *testing.T) {
-	var reply struct {
-		Name     string `json:"name"`
-		Status   string `json:"status"`
-		Url      string `json:"url"`
-		ThumbUrl string `json:"thumbUrl"`
-	}
-	if err := DELETE("https://run.mocky.io/v3/fd257431-155a-4a8e-9d49-4ca233067206", &reply); err != nil {
+	ts := httptest.NewServer(writeData(std.D{
+		"login": "John Doe",
+		"roles": []string{"moderator"},
+		"id":    "b06cd03f-75d0-413a-b94b-35e155444d70",
+	}))
+	var dst reply
+	if err := DELETE(fmt.Sprintf("%s?a=1&b=2", ts.URL), &dst); err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, "xxx.png", reply.Name)
-	assert.Equal(t, "done", reply.Status)
-	assert.Equal(t, "https://example.com/a/jkjgkEfvpUPVyRjUImniVslZfWPnJuuZ.png", reply.Url)
-	assert.Equal(t, "https://example.com/a/jkjgkEfvpUPVyRjUImniVslZfWPnJuuZ.png", reply.ThumbUrl)
+	body, _ := parser.NewParser(dst.Body)
+	assert.Equal(t, http.MethodDelete, dst.Method)
+	assert.Equal(t, "application/json", dst.Header.Get("Content-Type"))
+	assert.Equal(t, "1", dst.Query.Get("a"))
+	assert.Equal(t, "2", dst.Query.Get("b"))
+	assert.Equal(t, "b06cd03f-75d0-413a-b94b-35e155444d70", body.GetString("id"))
+	assert.Equal(t, "John Doe", body.GetString("login"))
+	assert.Equal(t, "moderator", body.GetString("roles[0]"))
 }
